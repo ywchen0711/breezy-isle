@@ -1115,4 +1115,4 @@ camera.position.set(W.spawn.x - 30, 34, W.spawn.z + 40); camera.lookAt(W.spawn.x
 requestAnimationFrame(frame);
 const cloudReady = startCloud(() => !started && !joining).then((newer) => { if (!started && !joining) { setId(save.id); if (newer) renderTitle(); } });
 if (params.has('play')) $('tPlay').onclick();
-window.BI = { W, me, cam, scene, camera, get fishing() { return fishing; }, save: () => save, net, get party() { return party; }, get bv() { return bv; }, get fight() { return fight; }, doAction, pickTool, startFight, invite, sendGift, peers, bugs, openWin, closeWin, attack };
+window.BI = { W, me, cam, scene, camera, myId, get fishing() { return fishing; }, save: () => save, net, get party() { return party; }, get bv() { return bv; }, get fight() { return fight; }, doAction, pickTool, startFight, invite, sendGift, peers, bugs, openWin, closeWin, attack };
