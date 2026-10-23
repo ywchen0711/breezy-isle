@@ -1,5 +1,5 @@
 // The save (kept in localStorage and mirrored to the game site's cloud save), and the game's words.
-import { ITEMS, CROPS, HOUSES, LOOKS, expFor } from './data.js';
+import { ITEMS, CROPS, HOUSES, LOOKS, expFor } from './data.js?v=4';
 
 export const SAVE_KEY = 'bi_save_v1', GAME = 'breezy-isle';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'p' + Math.random().toString(36).slice(2) + Date.now().toString(36));

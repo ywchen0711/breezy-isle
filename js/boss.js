@@ -1,8 +1,8 @@
 // A boss fight, run by the party leader's browser (no DOM: tests run it in node).
 // The boss picks a target, walks, and winds up attacks shown on the ground as warning shapes; when a shape
 // goes off, every player checks whether they are standing in it (main.js). Players send their hits to the leader.
-import { BOSSES } from './data.js';
-import { ARENA } from './world.js';
+import { BOSSES } from './data.js?v=4';
+import { ARENA } from './world.js?v=4';
 
 let nextTele = 1;
 export class BossFight {

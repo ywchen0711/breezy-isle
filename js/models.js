@@ -1,7 +1,7 @@
 // Low-poly models: chibi islanders, tools, houses, yard decor, crops, bosses and the town's buildings.
 // Drawn like Sage Canyon: soft four-step cel shading and a dark brown outline round every model.
 import * as THREE from 'three';
-import { CROPS } from './data.js';
+import { CROPS } from './data.js?v=4';
 
 export const GRAD = (() => { const d = new Uint8Array([70, 150, 210, 255]); const t = new THREE.DataTexture(d, 4, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
 const mats = new Map();
