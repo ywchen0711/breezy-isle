@@ -100,7 +100,7 @@ const STR = {
     friendAsk: (n) => `${n} 想加你好友`, partyAsk: (n) => `${n} 邀請你組隊打魔王`, yes: '好', no: '不要', friendOk: (n) => `🤝 和 ${n} 成為朋友了！`, giftFrom: (n, s) => `🎁 ${n} 送你 ${s}！`, giftSent: (n) => `🎁 送給 ${n} 了！`, giftPick: (n) => `要送什麼給 ${n}？`,
     partyFull: '隊伍滿了（最多 4 人）', joined: (n) => `${n} 加入隊伍`, partyLeft: (n) => `${n} 離開隊伍`, notNear: '要走近一點',
     boss: '魔王祭壇', fightStart: '開始挑戰', fighting: '有人正在挑戰魔王…', onlyLeader: '只有隊長可以開始', bossWin: (n) => `🏆 打倒了 ${n}！`, bossLose: '全隊倒下了…回去準備一下再來！', down: '你倒下了…等隊友打完', partyIn: (n) => `參戰：${n} 人（在祭壇附近的隊友）`,
-    pcKeys: 'WASD 移動 · Shift 跑步 · E 動作 · 1–7 換工具 · F 攻擊 · 空白鍵 翻滾 · Q 吃東西', touchKeys: '左邊搖桿移動 · 右下按鈕動作', lang: 'English', sound: '音效',
+    pcKeys: 'WASD 移動 · 拖曳畫面或 Z / X 轉視角 · 滾輪縮放 · Shift 跑步 · E 動作 · 1–7 換工具 · F 攻擊 · 空白鍵 翻滾 · Q 吃東西', touchKeys: '左邊搖桿移動 · 右半邊拖曳轉視角 · 右下按鈕動作', lang: 'English', sound: '音效',
     shopTabs: ['買', '賣'], tool: '工具', toolUp: (n) => `🔧 得到 ${n}！`, trophy: (n) => `🏆 得到 ${n}，可以擺在院子裡！`,
     help: '島上生活小指南', helpBody: [
       '🌱 種田：在下面工具列選 🌱 種子，走到自己家的田地按 E 種下；🚿 澆水會長得快一倍。作物就算你離開遊戲也會繼續長大。',
@@ -130,7 +130,7 @@ const STR = {
     friendAsk: (n) => `${n} wants to be friends`, partyAsk: (n) => `${n} invites you to a boss party`, yes: 'Yes', no: 'No', friendOk: (n) => `🤝 You and ${n} are friends!`, giftFrom: (n, s) => `🎁 ${n} gave you ${s}!`, giftSent: (n) => `🎁 Sent to ${n}!`, giftPick: (n) => `What will you give ${n}?`,
     partyFull: 'The party is full (4 max)', joined: (n) => `${n} joined the party`, partyLeft: (n) => `${n} left the party`, notNear: 'Get a bit closer',
     boss: 'Boss Altar', fightStart: 'Start the fight', fighting: 'Someone is fighting the boss…', onlyLeader: 'Only the party leader can start', bossWin: (n) => `🏆 You beat the ${n}!`, bossLose: 'The whole party fell… gear up and try again!', down: 'You’re down… wait for your party', partyIn: (n) => `Fighting: ${n} (party members near the altar)`,
-    pcKeys: 'WASD move · Shift run · E action · 1–7 tools · F attack · Space roll · Q eat', touchKeys: 'Left stick to move · buttons bottom right', lang: '中文', sound: 'Sound',
+    pcKeys: 'WASD move · drag or Z / X to turn the camera · wheel to zoom · Shift run · E action · 1–7 tools · F attack · Space roll · Q eat', touchKeys: 'Left stick to move · drag the right half to turn the camera · buttons bottom right', lang: '中文', sound: 'Sound',
     shopTabs: ['Buy', 'Sell'], tool: 'Tool', toolUp: (n) => `🔧 Got the ${n}!`, trophy: (n) => `🏆 You got the ${n}; put it in your yard!`,
     help: 'Island life guide', helpBody: [
       '🌱 Farming: pick 🌱 seeds on the toolbar, walk onto your own farm and press E to plant; 🚿 watering makes them grow twice as fast. Crops keep growing even while you are away.',

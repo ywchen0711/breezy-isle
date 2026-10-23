@@ -1,13 +1,28 @@
 // Low-poly models: chibi islanders, tools, houses, yard decor, crops, bosses and the town's buildings.
+// Drawn like Sage Canyon: soft four-step cel shading and a dark brown outline round every model.
 import * as THREE from 'three';
 import { CROPS } from './data.js';
 
+export const GRAD = (() => { const d = new Uint8Array([70, 150, 210, 255]); const t = new THREE.DataTexture(d, 4, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
 const mats = new Map();
 export function mat(color, o = {}) {
   const k = color + JSON.stringify(o);
-  const { flat, ...rest } = o;
-  if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color, roughness: 0.7, flatShading: !!flat, ...rest }));
+  const { flat, metalness, roughness, ...rest } = o;
+  if (!mats.has(k)) mats.set(k, new THREE.MeshToonMaterial({ color, gradientMap: GRAD, ...rest }));
   return mats.get(k);
+}
+export const OUTLINE = new THREE.MeshBasicMaterial({ color: '#2e1e12', side: THREE.BackSide });
+// a dark rim round a model: each part again, a little bigger, drawn inside out
+export function outline(g, w = 0.045) {
+  const add = [];
+  g.traverse((o) => {
+    if (!o.isMesh || o.userData.noOutline || o.userData.isOutline || o.material === OUTLINE || o.material.transparent) return;
+    const m = new THREE.Mesh(o.geometry, OUTLINE); m.userData.noOutline = m.userData.isOutline = true;
+    const s = o.geometry.boundingSphere || (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere);
+    m.scale.setScalar(1 + w / Math.max(0.05, s.radius)); add.push([o, m]);
+  });
+  for (const [o, m] of add) o.add(m);
+  return g;
 }
 const geos = new Map();
 const geo = (k, make) => { if (!geos.has(k)) { const g = make(); g.userData.shared = true; geos.set(k, g); } return geos.get(k); };
@@ -20,7 +35,7 @@ function put(parent, g, m, x = 0, y = 0, z = 0) { const o = new THREE.Mesh(g, m)
 
 // ------------------------------------------------------------------ people
 // look: { skin, hair, style, shirt, pants }
-export function makePerson(look, { apron = null, hat = null } = {}) {
+function makePerson0(look, { apron = null, hat = null } = {}) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const skin = mat(look.skin), shirt = mat(look.shirt), pants = mat(look.pants || '#3a4a6a'), hair = mat(look.hair), dark = mat('#1a1420');
   const limb = (x, y, len, r, m) => { const p = new THREE.Group(); p.position.set(x, y, 0); body.add(p); put(p, cap(r, len), m, 0, -len / 2 - r * 0.3, 0); return p; };
@@ -60,7 +75,7 @@ export function animPerson(g, dt, speed, act = '', actT = 0) {
   u.body.rotation.x = act === 'roll' ? -0.6 : 0;
 }
 // tools held in the right hand
-export function makeTool(id) {
+function makeTool0(id) {
   const g = new THREE.Group(), wood = mat('#9a6a3a'), metal = mat('#c8ccd8', { metalness: 0.5, roughness: 0.35 });
   if (!id || id === 'hand') return g;
   const handle = (len) => { const h = put(g, cyl(0.03, 0.03, len, 6), wood, 0, 0, len / 2 - 0.1); h.rotation.x = Math.PI / 2; return h; };
@@ -77,7 +92,7 @@ export function makeTool(id) {
 export function holdTool(person, id) { const u = person.userData; if (u.tool === id) return; u.tool = id; u.hand.clear(); u.hand.add(makeTool(id)); }
 
 // ------------------------------------------------------------------ houses (by stage) and the yard
-export function makeHouse(stage, roof, wall) {
+function makeHouse0(stage, roof, wall) {
   const g = new THREE.Group(), R = mat(roof), Wm = mat(wall), wood = mat('#8a5a3a'), win = mat('#bfe4ff', { emissive: '#3a6a8a', emissiveIntensity: 0.25 }), door = mat('#6a3a1a');
   if (stage === 0) {   // a tent
     const t = put(g, geo('tent', () => new THREE.ConeGeometry(1.9, 2.2, 4)), R, 0, 1.1, 0); t.rotation.y = Math.PI / 4;
@@ -102,7 +117,7 @@ export function makeHouse(stage, roof, wall) {
   if (stage >= 3) for (const s of [-1, 1]) put(g, box(0.8, 0.7, 0.08), win, s * (W / 2 - 0.9), H * 0.55, -D / 2 - 0.03);
   return g;
 }
-export function makeDecor(id) {
+function makeDecor0(id) {
   const g = new THREE.Group(), wood = mat('#9a6a3a');
   if (id === 'fence') { for (const x of [-0.6, 0, 0.6]) put(g, box(0.12, 0.8, 0.12), wood, x, 0.4, 0); for (const y of [0.3, 0.6]) put(g, box(1.4, 0.08, 0.06), wood, 0, y, 0); }
   else if (id === 'flowers') { put(g, box(1.2, 0.25, 0.8), mat('#7a4a2a'), 0, 0.12, 0); for (let i = 0; i < 6; i++) put(g, sph(0.13, 6, 5), mat(['#ff5a7a', '#ffd23a', '#ffffff', '#c86aff', '#ff8a3a', '#5aa8ff'][i]), -0.4 + (i % 3) * 0.4, 0.4, i < 3 ? -0.15 : 0.15); }
@@ -134,7 +149,7 @@ export function makeCrop(id, stage, wet) {
 }
 
 // ------------------------------------------------------------------ bosses
-export function makeBoss(type) {
+function makeBoss0(type) {
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const eyes = (y, z, s, col = '#1a1420') => { for (const k of [-1, 1]) { put(body, sph(0.22 * s, 10, 8), mat('#ffffff'), k * 0.5 * s, y, z); put(body, sph(0.12 * s, 8, 6), mat(col), k * 0.5 * s, y, z + 0.15 * s); } };
   if (type === 'slime') {
@@ -163,7 +178,7 @@ export function makeBoss(type) {
 }
 
 // ------------------------------------------------------------------ the town
-export function makeShop(s) {
+function makeShop0(s) {
   const g = new THREE.Group(), wall = mat('#f4e8d0'), roof = mat(s.color);
   put(g, box(s.w, 3, s.d), wall, 0, 1.5, 0);
   const rf = put(g, box(s.w + 0.8, 0.5, s.d + 0.8), roof, 0, 3.25, 0); rf.rotation.z = 0;
@@ -174,7 +189,7 @@ export function makeShop(s) {
   for (let i = 0; i < 6; i++) put(g, box(s.w / 6, 0.12, 0.9), mat(i % 2 ? '#ffffff' : s.color), -s.w / 2 + s.w / 12 + i * s.w / 6, 2.55, s.d / 2 + 0.45).rotation.x = 0.35;
   return g;
 }
-export function makeFountain() {
+function makeFountain0() {
   const g = new THREE.Group();
   put(g, cyl(2, 2.1, 0.6, 20), mat('#c8c8d0', { flat: true }), 0, 0.3, 0);
   put(g, cyl(1.75, 1.75, 0.62, 20), mat('#5ab8f0', { transparent: true, opacity: 0.85 }), 0, 0.32, 0);
@@ -182,17 +197,28 @@ export function makeFountain() {
   const jet = put(g, cone(0.3, 0.9, 10), mat('#bfe8ff', { transparent: true, opacity: 0.7, emissive: '#5ab0e8', emissiveIntensity: 0.4 }), 0, 2.2, 0); jet.userData.jet = true;
   return g;
 }
-export function makeBoard() {
+function makeBoard0() {
   const g = new THREE.Group(), wood = mat('#8a5a3a');
   for (const x of [-0.85, 0.85]) put(g, box(0.15, 2, 0.15), wood, x, 1, 0);
   put(g, box(2, 1.2, 0.12), mat('#c89a5a'), 0, 1.4, 0);
   for (let i = 0; i < 3; i++) put(g, box(0.45, 0.55, 0.02), mat(['#fff8e0', '#ffe0e8', '#e0f0ff'][i]), -0.6 + i * 0.6, 1.4, 0.07).rotation.z = (i - 1) * 0.1;
   return g;
 }
-export function makeAltar() {
+function makeAltar0() {
   const g = new THREE.Group();
   put(g, cyl(1.2, 1.4, 0.5, 8), mat('#6a6a7a', { flat: true }), 0, 0.25, 0);
   put(g, box(0.9, 1, 0.9), mat('#8a8a9a', { flat: true }), 0, 1, 0);
   const orb = put(g, sph(0.4, 14, 10), mat('#c86aff', { emissive: '#8a3aff', emissiveIntensity: 1.4 }), 0, 1.9, 0); orb.userData.orb = true;
   return g;
 }
+
+// every model gets its outline
+export const makePerson = (...a) => outline(makePerson0(...a), 0.035);
+export const makeTool = (...a) => outline(makeTool0(...a), 0.035);
+export const makeHouse = (...a) => outline(makeHouse0(...a), 0.07);
+export const makeDecor = (...a) => outline(makeDecor0(...a), 0.035);
+export const makeBoss = (...a) => outline(makeBoss0(...a), 0.07);
+export const makeShop = (...a) => outline(makeShop0(...a), 0.07);
+export const makeFountain = (...a) => outline(makeFountain0(...a), 0.035);
+export const makeBoard = (...a) => outline(makeBoard0(...a), 0.035);
+export const makeAltar = (...a) => outline(makeAltar0(...a), 0.035);

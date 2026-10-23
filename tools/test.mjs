@@ -1,5 +1,5 @@
 // node tools/test.mjs: the island is connected, the data is consistent, and bosses are beatable with the right gear
-import { genWorld, walkable, S, TL, tileAt, waterAhead, collide } from '../js/world.js';
+import { genWorld, walkable, S, TL, tileAt, waterAhead, collide, ARENA } from '../js/world.js';
 import { ITEMS, RECIPES, CROPS, FISH, BUGS, BOSSES, HOUSES, DECOR, STORE, buyPrice, maxHp } from '../js/data.js';
 import { BossFight, inShape, swingDamage, takenDamage } from '../js/boss.js';
 
@@ -37,7 +37,7 @@ function fight(type, n, gearTier, lv, seed) {
   const G = [{}, { atk: 11, def: 6, hp: 20 }, { atk: 18, def: 10, hp: 40 }, { atk: 27, def: 15, hp: 60 }, { atk: 38, def: 18, hp: 120 }][gearTier];
   const B = new BossFight(type, Array.from({ length: n }, (_, i) => 'p' + i), seed);
   let s = seed; const r = () => { s = (s * 48271) % 2147483647; return s / 2147483647; };
-  const ps = Array.from({ length: n }, (_, i) => ({ id: 'p' + i, x: 80 + (i - n / 2) * 2, z: 30, hp: maxHp(lv, G), dead: false, cd: 0, food: 3 }));
+  const ps = Array.from({ length: n }, (_, i) => ({ id: 'p' + i, x: ARENA.x + (i - n / 2) * 2, z: ARENA.z + 8, hp: maxHp(lv, G), dead: false, cd: 0, food: 3 }));
   const atk = 4 + (G.atk || 0) + lv * 0.5, def = G.def || 0;
   let t = 0;
   while (!B.over && t < 300) {

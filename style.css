@@ -153,3 +153,13 @@ button.ghost { border: 2px solid var(--line); border-radius: 10px; background: #
   #meBox { width: 150px; top: 50px; } #mini { width: 100px; height: 100px; top: 104px; } #tools { max-width: 70vw; }
   #tools button { width: 36px; height: 36px; font-size: 16px; } #clock { top: 56px; left: auto; right: 116px; transform: none; font-size: 12px; }
 }
+
+/* names and speech bubbles over heads */
+#tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.tag3d { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; transform-origin: 0 0; }
+.tag3d > * { transform: translate(-50%, -100%); }
+.tag3d span { position: relative; left: 0; background: rgba(46, 30, 18, .78); color: #fff; font-weight: 900; font-size: 12px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.tag3d span b { color: #ffd23a; font-size: 11px; }
+.tag3d.friend span { background: rgba(200, 80, 130, .85); }
+.tag3d .say { margin: 0; background: #fff; color: var(--ink); border: 2px solid var(--line); border-radius: 12px; padding: 3px 10px; font-weight: 900; font-size: 14px; white-space: nowrap; }
+.tag3d .say[hidden] { display: none; }

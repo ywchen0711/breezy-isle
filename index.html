@@ -8,15 +8,16 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%235ab8f0'/%3E%3Cellipse cx='8' cy='11' rx='6' ry='3' fill='%23f2e2a8'/%3E%3Cpath d='M8 11V4' stroke='%238a5a34' stroke-width='1.2'/%3E%3Cpath d='M8 4c-3 0-4 2-4 2 1.5-.5 3-.6 4 0 1-.6 2.5-.5 4 0 0 0-1-2-4-2z' fill='%234aa83a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="style.css?v=2">
 <script type="importmap">
-  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
 </head>
 <body>
 <canvas id="cv"></canvas>
 <div id="flash"></div>
 
+<div id="tags"></div>
 <div id="hud" hidden>
   <div id="meBox">
     <div class="nm"><b id="meName"></b> <span id="meLv"></span></div>
@@ -72,7 +73,7 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js?v=2"></script>
+<script type="module" src="js/main.js?v=3"></script>
 <script src="/hub.js" data-pos="top-left" defer></script>
 </body>
 </html>

@@ -1,9 +1,14 @@
 // Breezy Isle: the client. Draws the island, moves you, runs farming / fishing / bugs / gathering / building,
 // talks to the other players (net.js), runs boss fights (boss.js) and all the windows.
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { ITEMS, CROPS, FISH, BUGS, TOOLS, HOTBAR, RECIPES, HOUSES, COLORS, LOOKS, BOSSES, DECOR, STORE, KINDS, SAYS, EMOTES, buyPrice, expFor, maxHp } from './data.js';
-import { genWorld, S, TL, tileAt, collide, waterAhead, islandHour, isNight, ARENA } from './world.js';
-import { makePerson, animPerson, holdTool, makeHouse, makeDecor, makeCrop, makeBoss, makeShop, makeFountain, makeBoard, makeAltar, mat } from './models.js';
+import { genWorld, S, TL, tileAt, collide, waterAhead, islandHour, isNight, ARENA, PLAZA } from './world.js';
+import { makePerson, animPerson, holdTool, makeHouse, makeDecor, makeCrop, makeBoss, makeShop, makeFountain, makeBoard, makeAltar, mat, GRAD, OUTLINE } from './models.js';
 import { BossFight, inShape, swingDamage, takenDamage } from './boss.js';
 import { net, myId, setId, setMe, connect, leave, sendState, setHouseSource, sendHouseSoon, peerEvent, sendBoss, newCode, cleanCode, cleanName } from './net.js';
 import { sfx } from './audio.js';
@@ -14,6 +19,8 @@ const params = new URLSearchParams(location.search);
 const isTouch = matchMedia('(pointer: coarse)').matches || params.has('touch');
 const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const rnd = Math.random;
+const HOUR = params.has('hour') ? +params.get('hour') : null;            // for screenshots: ?hour=12
+const hourNow = () => (HOUR === null ? islandHour() : HOUR);
 const qLang = (location.search.match(/[?&]lang=(zh|en)(?![a-z])/) || [])[1]; if (qLang) { save.lang = qLang; }
 if (cleanCode(params.get('room')).length === 4) { save.room = save.lastCode = cleanCode(params.get('room')); }
 
@@ -23,33 +30,69 @@ renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isTouch ? 1.5 : 1.75));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(48, 1, 0.5, 400);
-const hemi = new THREE.HemisphereLight(0xdff0ff, 0x6a8a4a, 1.1); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff2d8, 1.6); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
-Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 90 }); scene.add(sun); scene.add(sun.target);
-scene.fog = new THREE.Fog(0x9ad8ff, 60, 140);
-function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1200);
+const hemi = new THREE.HemisphereLight('#fff2d8', '#6a5a34', 1.25); scene.add(hemi);
+const sun = new THREE.DirectionalLight('#fff4e0', 2.4); sun.castShadow = true; sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 140 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+scene.add(sun); scene.add(sun.target);
+scene.fog = new THREE.Fog('#f2e8c8', 90, 260);
+// the look of Sage Canyon: render → a little bloom → a painterly grade → chunky pixels with a 4×4 dither, a smaller
+// palette and a dark brown line where colours change sharply
+const rt = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, rt); composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.12, 0.4, 0.92)); composer.addPass(new OutputPass());
+const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uVig: { value: 0.3 } }, vertexShader: VS,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uVig; varying vec2 vUv;
+    void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114)); c.rgb = (c.rgb - 0.5) * 1.06 + 0.5;
+      c.rgb += vec3(0.035, 0.018, -0.025) * smoothstep(0.35, 1.0, l) + vec3(0.01, 0.0, -0.01) * (1.0 - smoothstep(0.0, 0.35, l));
+      vec2 v = vUv - 0.5; c.rgb *= 1.0 - uVig * dot(v, v) * 1.6; gl_FragColor = c; }` });
+composer.addPass(grade);
+const pixel = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1280, 720) }, uPix: { value: 3.0 } }, vertexShader: VS,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uPix; varying vec2 vUv;
+    vec3 at(vec2 cell){ return texture2D(tDiffuse, (cell + 0.5) * uPix / uRes).rgb; }
+    void main(){ vec2 cell = floor(vUv * uRes / uPix); vec3 c = at(cell); float l = dot(c, vec3(0.299, 0.587, 0.114));
+      float e = max(abs(l - dot(at(cell + vec2(1.0, 0.0)), vec3(0.299, 0.587, 0.114))), abs(l - dot(at(cell + vec2(0.0, 1.0)), vec3(0.299, 0.587, 0.114))));
+      vec2 m = mod(cell, 4.0); float b = m.x < 1.0 ? (m.y < 1.0 ? 0.0 : m.y < 2.0 ? 12.0 : m.y < 3.0 ? 3.0 : 15.0) : m.x < 2.0 ? (m.y < 1.0 ? 8.0 : m.y < 2.0 ? 4.0 : m.y < 3.0 ? 11.0 : 7.0) : m.x < 3.0 ? (m.y < 1.0 ? 2.0 : m.y < 2.0 ? 14.0 : m.y < 3.0 ? 1.0 : 13.0) : (m.y < 1.0 ? 10.0 : m.y < 2.0 ? 6.0 : m.y < 3.0 ? 9.0 : 5.0);
+      c = floor(c * 18.0 + b / 16.0) / 18.0; c = mix(c, vec3(0.18, 0.12, 0.07), smoothstep(0.22, 0.42, e) * 0.55); gl_FragColor = vec4(c, 1.0); }` });
+composer.addPass(pixel);
+// the sky: a dome from the horizon's haze up to deep blue, with the sun, and stars at night
+const skyU = { top: { value: new THREE.Color('#5aa0d8') }, hor: { value: new THREE.Color('#f2e8c8') }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color('#fff0c0') }, night: { value: 0 } };
+const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.ShaderMaterial({ uniforms: skyU, side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 top, hor, sunDir, sunCol; uniform float night; varying vec3 vD;
+    float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 45.164))) * 43758.5453); }
+    void main(){ float y = max(vD.y, 0.0); vec3 c = mix(hor, top, pow(y, 0.55)); if (vD.y < 0.0) c = hor * 0.9;
+      float s = max(dot(vD, sunDir), 0.0); c += sunCol * (pow(s, 600.0) * 2.5 + pow(s, 8.0) * 0.25);
+      vec3 q = floor(vD * 260.0); c += vec3(step(0.9975, h(q)) * night * smoothstep(0.0, 0.3, vD.y)); gl_FragColor = vec4(c, 1.0); }` }));
+sky.renderOrder = -1; scene.add(sky);
+function resize() {
+  const pr = Math.min(devicePixelRatio || 1, isTouch ? 1.25 : 1.75);   // the pixel pass makes extra resolution invisible anyway
+  renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight, false); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight);
+  pixel.uniforms.uRes.value.set(innerWidth * pr, innerHeight * pr); pixel.uniforms.uPix.value = Math.max(3, Math.round(3 * pr));
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+}
 addEventListener('resize', resize); resize();
 
 const W = genWorld();
-const TCOL = { [TL.SEA]: '#3a8ad8', [TL.SAND]: '#f2e2a8', [TL.GRASS]: '#7ac85a', [TL.PATH]: '#e8d0a0', [TL.PLAZA]: '#d8d0c8', [TL.RIVER]: '#4aa8e8', [TL.POND]: '#4ab8d8',
-  [TL.CLIFF]: '#8a7a6a', [TL.DIRT]: '#b8946a', [TL.BRIDGE]: '#b0804a', [TL.ARENA]: '#8a7a8a', [TL.LOT]: '#8ed06a' };
+const TCOL = { [TL.SEA]: '#3a86c0', [TL.SAND]: '#f0dca0', [TL.GRASS]: '#86c25a', [TL.PATH]: '#e2c48e', [TL.PLAZA]: '#dccfb8', [TL.RIVER]: '#56a8d8', [TL.POND]: '#4ab0c8',
+  [TL.CLIFF]: '#9a8268', [TL.DIRT]: '#c09868', [TL.BRIDGE]: '#b07a46', [TL.ARENA]: '#9a8a8a', [TL.LOT]: '#94cc66' };
 function buildIsland() {
   // the ground, painted pixel by pixel: soft noise on grass and sand, plank lines on bridges, foam along the shore
-  const g = new THREE.Group(), px = 4, N = S * px, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = new THREE.Group(), px = 2, N = S * px, cv = document.createElement('canvas'); cv.width = cv.height = N;
   const x = cv.getContext('2d'), img = x.createImageData(N, N), D = img.data;
   const rgb = {}; for (const [k, c] of Object.entries(TCOL)) { const v = new THREE.Color(c); rgb[k] = [v.r * 255, v.g * 255, v.b * 255]; }
   const wet = (t) => t === TL.SEA || t === TL.RIVER || t === TL.POND;
   const at = (a, b) => (a < 0 || b < 0 || a >= S || b >= S ? TL.SEA : W.tile[b * S + a]);
   for (let py = 0; py < N; py++) for (let pxx = 0; pxx < N; pxx++) {
-    const tx = pxx >> 2, tz = py >> 2, t = W.tile[tz * S + tx], c = rgb[t];
+    const tx = pxx >> 1, tz = py >> 1, t = W.tile[tz * S + tx], c = rgb[t];
     let h = ((pxx * 73856093) ^ (py * 19349663) ^ (tx * 83492791)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
     let k = 1 + (((h & 255) / 255) - 0.5) * (t === TL.GRASS || t === TL.LOT ? 0.12 : t === TL.SAND || t === TL.DIRT ? 0.08 : 0.04);
     if (t === TL.PLAZA && ((tx + tz) & 1)) k *= 0.95;
-    if (t === TL.BRIDGE && (py & 3) === 0) k *= 0.7;
+    if (t === TL.BRIDGE && (py & 1) === 0) k *= 0.8;
     let r = c[0] * k, gg = c[1] * k, b = c[2] * k;
     if (wet(t)) {   // foam where water meets land
-      const fx = (pxx & 3) / 4, fz = (py & 3) / 4;
+      const fx = (pxx & 1) / 2 + 0.25, fz = (py & 1) / 2 + 0.25;
       const edge = (!wet(at(tx - 1, tz)) && fx < 0.3) || (!wet(at(tx + 1, tz)) && fx > 0.7) || (!wet(at(tx, tz - 1)) && fz < 0.3) || (!wet(at(tx, tz + 1)) && fz > 0.7);
       if (edge) { r = r * 0.4 + 153; gg = gg * 0.4 + 153; b = b * 0.4 + 153; }
       else if ((h & 1023) < 6) { r += 60; gg += 60; b += 50; }
@@ -57,18 +100,23 @@ function buildIsland() {
     const o = (py * N + pxx) * 4; D[o] = Math.min(255, r); D[o + 1] = Math.min(255, gg); D[o + 2] = Math.min(255, b); D[o + 3] = 255;
   }
   x.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(S, S), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.magFilter = THREE.NearestFilter;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(S, S), new THREE.MeshToonMaterial({ map: tex, gradientMap: GRAD }));
   ground.rotation.x = -Math.PI / 2; ground.position.set(S / 2, 0, S / 2); ground.receiveShadow = true; g.add(ground);
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), new THREE.MeshStandardMaterial({ color: 0x3a8ad8, roughness: 0.3, metalness: 0.1 }));
-  sea.rotation.x = -Math.PI / 2; sea.position.set(S / 2, -0.03, S / 2); g.add(sea);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), mat('#3a86c0'));
+  sea.rotation.x = -Math.PI / 2; sea.position.set(S / 2, -0.6, S / 2);   // well below the ground (which paints its own water), so they never fight over depth sea.receiveShadow = true; g.add(sea);
   // cliffs round the boss cave
   const cl = []; for (let z = 0; z < S; z++) for (let xx = 0; xx < S; xx++) if (W.tile[z * S + xx] === TL.CLIFF) cl.push([xx, z]);
-  const cm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1.6, 1), mat('#8a7a6a', { flat: true }), cl.length), m4 = new THREE.Matrix4();
-  cl.forEach(([a, b], i) => { m4.makeScale(1, 0.8 + (((a * 7 + b * 3) % 5) / 10), 1).setPosition(a + 0.5, 0.7, b + 0.5); cm.setMatrixAt(i, m4); }); cm.castShadow = true; g.add(cm);
+  const cm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1.6, 1), mat('#9a8268'), cl.length), m4 = new THREE.Matrix4();
+  cl.forEach(([a, b], i) => { m4.makeScale(1, 0.8 + (((a * 7 + b * 3) % 5) / 10), 1).setPosition(a + 0.5, 0.7, b + 0.5); cm.setMatrixAt(i, m4); }); cm.castShadow = cm.receiveShadow = true; g.add(cm);
   return g;
 }
 scene.add(buildIsland());
+// an instanced mesh's dark rim: the same instances again, drawn inside out from a slightly bigger copy of the shape
+function instOutline(im, grow) {
+  const g = im.geometry.clone(); g.scale(grow, grow, grow);
+  const o = new THREE.InstancedMesh(g, OUTLINE, im.count); o.instanceMatrix = im.instanceMatrix; o.frustumCulled = false; return o;
+}
 
 // trees, rocks and flowers (instanced); fruit and tiredness are per player
 const NODE = { trees: null, crowns: null, fruits: null, rocks: [], flowers: null };
@@ -76,9 +124,9 @@ const FRUITC = { apple: 0xe8322c, orange: 0xff9a2a, peach: 0xffa8a0, cherry: 0xc
 {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
   const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.24, 1.6, 7), mat('#8a5a34'), W.trees.length);
-  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.15, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, flatShading: true }), W.trees.length);
+  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.15, 1), new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: GRAD }), W.trees.length);
   const fr = W.trees.filter((t) => t.fruit);
-  const fruit = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 8, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }), fr.length * 3);
+  const fruit = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 8, 6), new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: GRAD }), fr.length * 3);
   W.trees.forEach((t, i) => {
     m4.compose(v.set(t.x, 0.8 * t.s, t.z), q, one.clone().multiplyScalar(t.s)); trunk.setMatrixAt(i, m4);
     m4.compose(v.set(t.x, 2.3 * t.s, t.z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.id), new THREE.Vector3(t.s, t.s * 1.05, t.s)); crown.setMatrixAt(i, m4);
@@ -86,16 +134,33 @@ const FRUITC = { apple: 0xe8322c, orange: 0xff9a2a, peach: 0xffa8a0, cherry: 0xc
   });
   q.identity();
   fr.forEach((t, k) => { t.fk = k; for (let j = 0; j < 3; j++) { fruit.setColorAt(k * 3 + j, col.set(FRUITC[t.fruit])); } });
-  trunk.castShadow = crown.castShadow = true; scene.add(trunk, crown, fruit);
+  trunk.castShadow = crown.castShadow = true; crown.receiveShadow = true; scene.add(trunk, crown, fruit, instOutline(trunk, 1.12), instOutline(crown, 1.05));
   NODE.trees = trunk; NODE.crowns = crown; NODE.fruits = fruit; NODE.fruitTrees = fr;
+  NODE.crownM = W.trees.map((t, i) => { const mm = new THREE.Matrix4(); crown.getMatrixAt(i, mm); return mm; });
   const ores = { stone: 0x9a9aa0, iron: 0xb08a6a, gold: 0xe8c84a };
-  const rk = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.62, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), W.rocks.length);
+  const rk = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.62, 0), new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: GRAD }), W.rocks.length);
   W.rocks.forEach((r, i) => { m4.compose(v.set(r.x, 0.4, r.z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), i), new THREE.Vector3(1, 0.75, 1)); rk.setMatrixAt(i, m4); rk.setColorAt(i, col.set(ores[r.ore])); });
-  rk.castShadow = true; scene.add(rk); NODE.rocks = rk;
-  const fl = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 6, 5), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), W.flowers.length);
+  rk.castShadow = true; scene.add(rk, instOutline(rk, 1.08)); NODE.rocks = rk;
+  const fl = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 6, 5), new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: GRAD }), W.flowers.length);
   const FC = [0xff5a7a, 0xffd23a, 0xffffff, 0xc86aff, 0x5aa8ff];
   q.identity(); W.flowers.forEach((f, i) => { m4.compose(v.set(f.x, 0.2, f.z), q, one); fl.setMatrixAt(i, m4); fl.setColorAt(i, col.set(FC[f.c])); });
   scene.add(fl); NODE.flowers = fl;
+}
+// tree crowns between the camera and you are hidden, so you never lose sight of yourself in a forest
+let hiddenCrowns = new Set(), occT = 0;
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+function clearView(dt) {
+  if ((occT -= dt) > 0) return; occT = 0.12;
+  const cx = camera.position.x, cz = camera.position.z, now = new Set();
+  const dx = me.x - cx, dz = me.z - cz, L2 = dx * dx + dz * dz;
+  for (const t of W.trees) {
+    if (Math.abs(t.x - me.x) > 26 || Math.abs(t.z - me.z) > 26) continue;
+    const k = ((t.x - cx) * dx + (t.z - cz) * dz) / L2; if (k < 0 || k > 1.05) continue;
+    const px = cx + dx * k, pz = cz + dz * k; if (Math.hypot(t.x - px, t.z - pz) < 1.9 * t.s) now.add(t.id);
+  }
+  for (const id of hiddenCrowns) if (!now.has(id)) NODE.crowns.setMatrixAt(id, NODE.crownM[id]);
+  for (const id of now) NODE.crowns.setMatrixAt(id, ZERO);
+  hiddenCrowns = now; NODE.crowns.instanceMatrix.needsUpdate = true;
 }
 function paintFruit(now = Date.now()) {
   const m4 = new THREE.Matrix4();
@@ -136,10 +201,12 @@ for (const s of W.shops) {
 { const b = makeBoard(); b.position.set(W.board.x, 0, W.board.z); scene.add(b); }
 { const a = makeAltar(); a.position.set(W.altar.x, 0, W.altar.z); scene.add(a); W.altarMesh = a; }
 for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; if (Math.sin(a) > 0.92) continue; const p = makeDecor('lamp'); p.position.set(ARENA.x + Math.cos(a) * (ARENA.r - 0.6), 0, ARENA.z + Math.sin(a) * (ARENA.r - 0.6)); scene.add(p); }
-for (const [x, z] of [[67, 67], [93, 67], [67, 89], [93, 89], [80, 92], [80, 100], [80, 115], [80, 128]]) { const p = makeDecor('lamp'); p.position.set(x, 0, z); scene.add(p); }
+const PX = (PLAZA.x0 + PLAZA.x1) / 2, PZ = W.fountain.z;
+for (const [x, z] of [[PLAZA.x0 + 1, PLAZA.z0 + 1], [PLAZA.x1 - 1, PLAZA.z0 + 1], [PLAZA.x0 + 1, PLAZA.z1 - 1], [PLAZA.x1 - 1, PLAZA.z1 - 1], ...Array.from({ length: 9 }, (_, i) => [PX + 2.4, PLAZA.z1 + 4 + i * 11]), ...Array.from({ length: 8 }, (_, i) => [PX - 2.4, PLAZA.z0 - 6 - i * 11])]) { const p = makeDecor('lamp'); p.position.set(x, 0, z); scene.add(p); }
 // the plaza: flower beds, benches round the fountain, little trees along the edges
-for (const [id, x, z, r] of [['flowers', 69, 69, 0], ['flowers', 91, 69, 0], ['flowers', 69, 88, 0], ['flowers', 91, 88, 0], ['bench', 75, 78, Math.PI / 2], ['bench', 85, 78, -Math.PI / 2], ['bench', 80, 83, Math.PI],
-  ['tree', 67.5, 74, 0], ['tree', 67.5, 82, 0], ['tree', 92.5, 82, 0], ['umbrella', 88, 86, 0], ['campfire', 84, 72, 0]]) { const m = makeDecor(id); m.position.set(x, 0, z); m.rotation.y = r; scene.add(m); }
+for (const [id, x, z, r] of [['flowers', PLAZA.x0 + 3, PLAZA.z0 + 3, 0], ['flowers', PLAZA.x1 - 3, PLAZA.z0 + 3, 0], ['flowers', PLAZA.x0 + 3, PLAZA.z1 - 3, 0], ['flowers', PLAZA.x1 - 3, PLAZA.z1 - 3, 0],
+  ['bench', PX - 5, PZ, Math.PI / 2], ['bench', PX + 5, PZ, -Math.PI / 2], ['bench', PX, PZ + 5, Math.PI], ['tree', PLAZA.x0 + 1.5, PZ - 4, 0], ['tree', PLAZA.x0 + 1.5, PZ + 4, 0], ['tree', PLAZA.x1 - 1.5, PZ + 4, 0],
+  ['umbrella', PX + 8, PLAZA.z1 - 4, 0], ['campfire', PX + 4, PLAZA.z0 + 6, 0]]) { const m = makeDecor(id); m.position.set(x, 0, z); m.rotation.y = r; scene.add(m); }
 const lampMat = mat('#ffe8a0', { emissive: '#ffc84a', emissiveIntensity: 0.9 });
 
 // ------------------------------------------------------------------ me and the others
@@ -150,7 +217,7 @@ function myAvatar(force) {
   if (me.avatar) scene.remove(me.avatar);
   me.avatar = makePerson(save.look); scene.add(me.avatar); holdTool(me.avatar, toolMesh(me.tool));
   me.avatar.userData.tool = null; holdTool(me.avatar, toolMesh(me.tool));
-  dropSprite(me.label); me.label = textSprite(`${save.name || '?'}  Lv${save.lv}`, { scale: 0.42 }); me.label.position.y = 2.65; me.avatar.add(me.label); me.labelSig = save.name + save.lv;
+  setTag(me, `${esc(save.name || '?')} <b>Lv${save.lv}</b>`, false); me.labelSig = save.name + save.lv;
 }
 const toolMesh = (t) => (t === 'hand' ? (fightOn() && save.gear.w ? 'sword' : 'hand') : t);
 const peers = new Map();   // id -> { avatar, label, x, z, yaw, look, ... }
@@ -160,11 +227,25 @@ function peerFor(id, s) {
   if (p && p.lookSig !== lookSig) { dropPeer(p); peers.delete(id); p = null; }
   if (!p) { const av = makePerson(s.look && s.look.skin ? s.look : save.look); scene.add(av); p = { id, avatar: av, lookSig, x: s.x, z: s.z, yaw: s.yaw || 0, label: null, labelSig: '', bubble: null, bubbleT: 0 }; av.position.set(s.x, 0, s.z); peers.set(id, p); }
   const sig = (s.n || '?') + s.lv;
-  if (p.labelSig !== sig) { dropSprite(p.label); p.label = textSprite(`${s.n || '?'}  Lv${s.lv || 1}`, { scale: 0.42, bg: save.friends[id] ? 'rgba(200,90,140,.8)' : 'rgba(30,40,60,.72)' }); p.label.position.y = 2.65; p.avatar.add(p.label); p.labelSig = sig; }
+  if (p.labelSig !== sig) { setTag(p, `${esc(s.n || '?')} <b>Lv${s.lv || 1}</b>`, !!save.friends[id]); p.labelSig = sig; }
   return p;
 }
-function dropPeer(p) { scene.remove(p.avatar); dropSprite(p.label); dropSprite(p.bubble); }
-function bubbleOn(who, text) { if (!who.avatar) return; dropSprite(who.bubble); who.bubble = textSprite(text, { scale: 0.55, bg: 'rgba(255,255,255,.95)', color: '#2a3048' }); who.bubble.position.y = 3.3; who.avatar.add(who.bubble); who.bubbleT = 4; }
+function dropPeer(p) { scene.remove(p.avatar); if (p.tag) p.tag.remove(); }
+// names and speech bubbles are HTML laid over the picture (crisp, not pixelated), following each head
+function setTag(who, html, friend) {
+  if (!who.tag) { who.tag = document.createElement('div'); who.tag.className = 'tag3d'; who.tag.innerHTML = '<p class="say" hidden></p><span></span>'; $('tags').appendChild(who.tag); }
+  who.tag.lastChild.innerHTML = (friend ? '💕 ' : '') + html; who.tag.classList.toggle('friend', !!friend);
+}
+function bubbleOn(who, text) { if (!who.tag) return; const b = who.tag.firstChild; b.textContent = text; b.hidden = false; who.bubbleT = 4; }
+const _tv = new THREE.Vector3();
+function placeTag(who, x, z, dt) {
+  if (!who.tag) return;
+  _tv.set(x, 3.1, z).project(camera);
+  const vis = started && _tv.z < 1 && Math.abs(_tv.x) < 1.1 && Math.abs(_tv.y) < 1.1;
+  who.tag.style.display = vis ? '' : 'none';
+  if (vis) who.tag.style.transform = `translate(${((_tv.x + 1) / 2 * innerWidth).toFixed(1)}px, ${((1 - _tv.y) / 2 * innerHeight).toFixed(1)}px)`;
+  if (who.bubbleT > 0 && (who.bubbleT -= dt) <= 0) who.tag.firstChild.hidden = true;
+}
 
 // ------------------------------------------------------------------ homes: each player's house, farm and yard on a plot
 const owners = () => (net.roster.length ? net.roster.map((r) => r.id) : [myId()]);
@@ -238,20 +319,24 @@ addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 addEventListener('wheel', (e) => { if (started && !winOpen()) camZoom = Math.max(0.6, Math.min(1.7, camZoom * (e.deltaY > 0 ? 1.08 : 0.93))); }, { passive: true });
 let camZoom = 1;
+// the camera turns freely: drag the picture (on a phone: the right half), or Z / X; it looks at you from yaw and pitch
+const cam = { yaw: 0, pitch: 0.92, drag: null };
+function camDrag(dx, dy) { cam.yaw -= dx * 0.008; cam.pitch = Math.max(0.28, Math.min(1.35, cam.pitch + dy * 0.006)); }
 const stick = { id: null, ox: 0, oy: 0, mx: 0, mz: 0 };
 $('cv').addEventListener('pointerdown', (e) => {
   sfx.unlock();
-  if (!isTouch || e.clientX > innerWidth * 0.5 || stick.id !== null) return;
+  if (!isTouch || e.clientX > innerWidth * 0.5 || stick.id !== null) { if (!cam.drag) cam.drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; return; }
   stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY;
   const st = $('stick'); st.style.left = (e.clientX - 60) + 'px'; st.style.top = (e.clientY - 60) + 'px'; st.classList.add('on');
 });
 addEventListener('pointermove', (e) => {
+  if (cam.drag && e.pointerId === cam.drag.id) { camDrag(e.clientX - cam.drag.x, e.clientY - cam.drag.y); cam.drag.x = e.clientX; cam.drag.y = e.clientY; return; }
   if (e.pointerId !== stick.id) return;
   let dx = e.clientX - stick.ox, dy = e.clientY - stick.oy; const d = Math.hypot(dx, dy), m = 55;
   if (d > m) { dx *= m / d; dy *= m / d; }
   stick.mx = dx / m; stick.mz = dy / m; $('knob').style.transform = `translate(${dx}px, ${dy}px)`;
 });
-for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, (e) => { if (e.pointerId === stick.id) { stick.id = null; stick.mx = stick.mz = 0; $('stick').classList.remove('on'); $('knob').style.transform = ''; } });
+for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, (e) => { if (cam.drag && e.pointerId === cam.drag.id) cam.drag = null; if (e.pointerId === stick.id) { stick.id = null; stick.mx = stick.mz = 0; $('stick').classList.remove('on'); $('knob').style.transform = ''; } });
 const tapBtn = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); sfx.unlock(); fn(); });
 tapBtn('bAct', () => doAction()); tapBtn('bAtk', () => attack()); tapBtn('bRoll', () => roll()); tapBtn('bEat', () => eatBest());
 function inputVec() {
@@ -262,6 +347,8 @@ function inputVec() {
   if (keys.has('KeyD') || keys.has('ArrowRight')) mx += 1;
   mx += stick.mx; mz += stick.mz;
   const d = Math.hypot(mx, mz); if (d > 1) { mx /= d; mz /= d; }
+  // turn the stick by the camera's yaw, so 'up' is always away from the camera
+  const c = Math.cos(cam.yaw), sn = Math.sin(cam.yaw), wx = mx * c + mz * sn, wz = -mx * sn + mz * c; mx = wx; mz = wz;
   return { mx, mz, run: keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(stick.mx, stick.mz) > 0.92 };
 }
 
@@ -663,8 +750,10 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
   if (started) update(dt, now);
-  renderer.render(scene, camera);
+  // behind the title card the island only needs an occasional redraw
+  if (started || (titleT = (titleT || 0) + 1) % 6 === 1) composer.render();
 }
+let titleT = 0;
 function update(dt, now) {
   const inp = winOpen() ? { mx: 0, mz: 0, run: false } : inputVec(), moving = Math.hypot(inp.mx, inp.mz) > 0.12;
   me.inv = Math.max(0, me.inv - dt); me.rollCd = Math.max(0, me.rollCd - dt); me.atkCd = Math.max(0, me.atkCd - dt); actBusy = Math.max(0, actBusy - dt); me.boost = Math.max(0, (me.boost || 0) - dt);
@@ -689,7 +778,7 @@ function update(dt, now) {
   animPerson(me.avatar, dt, me.speed, me.roll > 0 ? 'roll' : me.act || (me.emoT > 0 ? 'wave' : ''), me.actT);
   me.avatar.rotation.z = me.down ? 1.4 : 0; me.avatar.position.y = me.down ? 0.3 : 0;
   me.avatar.visible = !(me.inv > 0 && me.roll <= 0 && fightOn() && Math.sin(now / 50) > 0.3);
-  if (me.bubble && (me.bubbleT -= dt) <= 0) { dropSprite(me.bubble); me.bubble = null; }
+
   me.emoT = Math.max(0, (me.emoT || 0) - dt);
   sendState({ x: +me.x.toFixed(2), z: +me.z.toFixed(2), yaw: +me.yaw.toFixed(2), sp: +me.speed.toFixed(2), tool: toolMesh(me.tool), act: me.act, hp: Math.round(me.hp), mhp: maxHp(save.lv, gearStats()), down: me.down ? 1 : 0, look: save.look }, now);
   // the others
@@ -704,7 +793,7 @@ function update(dt, now) {
     holdTool(q.avatar, s.tool || 'hand');
     if (s.act !== q.lastAct) { q.lastAct = s.act; q.actT = 0; } q.actT = (q.actT || 0) + dt;
     animPerson(q.avatar, dt, s.sp || 0, s.act || '', q.actT);
-    if (q.bubble && (q.bubbleT -= dt) <= 0) { dropSprite(q.bubble); q.bubble = null; }
+    placeTag(q, q.x, q.z, dt);
   }
   for (const [id, q] of peers) if (!seen.has(id)) { dropPeer(q); peers.delete(id); }
   // homes
@@ -714,22 +803,28 @@ function update(dt, now) {
   if (W.fountainMesh) W.fountainMesh.traverse((o) => { if (o.userData.jet) o.scale.y = 1 + Math.sin(now / 200) * 0.15; });
   if (W.altarMesh) W.altarMesh.traverse((o) => { if (o.userData.orb) o.position.y = 1.9 + Math.sin(now / 400) * 0.12; });
   // camera
-  const ch = 13 * camZoom, cb = 10 * camZoom;
-  camera.position.set(me.x, ch, me.z + cb); camera.lookAt(me.x, 0.8, me.z);
-  sun.position.set(me.x - 18, 30, me.z + 10); sun.target.position.set(me.x, 0, me.z);
+  if (!winOpen()) { if (keys.has('KeyZ')) cam.yaw += dt * 2; if (keys.has('KeyX')) cam.yaw -= dt * 2; }
+  const dist = 17 * camZoom, cp = Math.cos(cam.pitch);
+  camera.position.set(me.x + Math.sin(cam.yaw) * cp * dist, 1 + Math.sin(cam.pitch) * dist, me.z + Math.cos(cam.yaw) * cp * dist); camera.lookAt(me.x, 1, me.z);
+  sky.position.copy(camera.position); clearView(dt); placeTag(me, me.x, me.z, dt);
+  sun.position.set(me.x + sunDir.x * 70, sunDir.y * 70 + 10, me.z + sunDir.z * 70); sun.target.position.set(me.x, 0, me.z);
   if ((hudT -= dt) <= 0) { hudT = 0.12; drawHud(); drawMini(); }
 }
 let lastSky = -1;
+const sunDir = new THREE.Vector3(0.4, 0.8, 0.3).normalize();
+// the sun crosses the sky from 6:00 to 18:00; dawn and dusk are warm, the night deep blue with stars
 function daylight() {
-  const h = islandHour(), d = h < 5 || h > 20 ? 0 : h < 7 ? (h - 5) / 2 : h > 18 ? (20 - h) / 2 : 1;
-  const key = Math.round(h * 20); if (key === lastSky) return; lastSky = key;
-  const day = new THREE.Color(0x9ad8ff), dusk = new THREE.Color(0xffb88a), night = new THREE.Color(0x1a2450);
-  const sky = night.clone().lerp(d < 1 && d > 0 ? dusk : day, d);
-  if (d >= 1) sky.copy(day);
-  scene.background = sky; scene.fog.color.copy(sky);
-  sun.intensity = 0.25 + 1.5 * d; hemi.intensity = 0.45 + 0.75 * d;
-  sun.color.set(d < 1 ? 0xffc89a : 0xfff2d8);
-  lampMat.emissiveIntensity = d < 0.6 ? 1.6 : 0.3;
+  const h = hourNow(), d = h < 5 || h > 20 ? 0 : h < 7 ? (h - 5) / 2 : h > 18 ? (20 - h) / 2 : 1;
+  const key = Math.round(h * 30); if (key === lastSky) return; lastSky = key;
+  const a = ((h - 6) / 12) * Math.PI; sunDir.set(-Math.cos(a) * 0.8, Math.max(0.18, Math.sin(a)), 0.45).normalize(); skyU.sunDir.value.copy(sunDir);
+  const lerp3 = (n, k, dd) => new THREE.Color(n).lerp(new THREE.Color(k), dd);
+  const warm = d > 0 && d < 1 ? 1 - Math.abs(d - 0.5) * 2 : 0;
+  skyU.top.value.copy(lerp3('#141c40', '#5aa0d8', d)); skyU.hor.value.copy(lerp3('#2a2a50', '#f2e8c8', d).lerp(new THREE.Color('#ffb07a'), warm * 0.7));
+  skyU.night.value = 1 - d; skyU.sunCol.value.set(warm > 0.2 ? '#ffb070' : '#fff0c0');
+  scene.fog.color.copy(skyU.hor.value);
+  sun.intensity = 0.35 + 2.1 * d; hemi.intensity = 0.5 + 0.75 * d;
+  sun.color.set(warm > 0.2 ? '#ffc08a' : d < 0.1 ? '#8aa0ff' : '#fff4e0');
+  lampMat.emissiveIntensity = d < 0.6 ? 1.8 : 0.3;
 }
 
 // ------------------------------------------------------------------ HUD
@@ -740,7 +835,7 @@ function drawHud(force) {
   $('hpBar').style.width = (me.hp / mh * 100) + '%'; $('hpTxt').textContent = `${Math.ceil(me.hp)}/${mh}`;
   $('expBar').style.width = (save.exp / expFor(save.lv) * 100) + '%';
   $('coins').textContent = '💰 ' + save.coins.toLocaleString();
-  const h = islandHour(); $('clock').textContent = `${isNight(h) ? '🌙' : '☀️'} ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
+  const h = hourNow(); $('clock').textContent = `${isNight(h) ? '🌙' : '☀️'} ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
   $('netSt').textContent = net.status === 'on' ? t.online(net.roster.length) : net.status === 'connecting' ? t.connecting : net.status === 'solo' ? t.solo : t.offline;
   const A = !winOpen() && findAction();
   $('hint').hidden = !A; if (A) $('hint').textContent = (isTouch ? '' : 'E · ') + A.label;
@@ -1016,8 +1111,8 @@ $('tPlay').onclick = async () => {
 document.body.classList.toggle('touch', isTouch);
 setId(save.id);
 renderTitle(); requestAnimationFrame(spinPreview);
-camera.position.set(80, 40, 120); camera.lookAt(80, 0, 78); daylight();
+camera.position.set(W.spawn.x - 30, 34, W.spawn.z + 40); camera.lookAt(W.spawn.x, 0, W.spawn.z - 6); daylight(); sky.position.copy(camera.position);
 requestAnimationFrame(frame);
 const cloudReady = startCloud(() => !started && !joining).then((newer) => { if (!started && !joining) { setId(save.id); if (newer) renderTitle(); } });
 if (params.has('play')) $('tPlay').onclick();
-window.BI = { W, me, save: () => save, net, get party() { return party; }, get bv() { return bv; }, get fight() { return fight; }, doAction, pickTool, startFight, invite, sendGift, peers, bugs, openWin, closeWin, attack };
+window.BI = { W, me, cam, scene, camera, get fishing() { return fishing; }, save: () => save, net, get party() { return party; }, get bv() { return bv; }, get fight() { return fight; }, doAction, pickTool, startFight, invite, sendGift, peers, bugs, openWin, closeWin, attack };
