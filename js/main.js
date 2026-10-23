@@ -54,7 +54,7 @@ const pixel = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uRes: { va
     void main(){ vec2 cell = floor(vUv * uRes / uPix); vec3 c = at(cell); float l = dot(c, vec3(0.299, 0.587, 0.114));
       float e = max(abs(l - dot(at(cell + vec2(1.0, 0.0)), vec3(0.299, 0.587, 0.114))), abs(l - dot(at(cell + vec2(0.0, 1.0)), vec3(0.299, 0.587, 0.114))));
       vec2 m = mod(cell, 4.0); float b = m.x < 1.0 ? (m.y < 1.0 ? 0.0 : m.y < 2.0 ? 12.0 : m.y < 3.0 ? 3.0 : 15.0) : m.x < 2.0 ? (m.y < 1.0 ? 8.0 : m.y < 2.0 ? 4.0 : m.y < 3.0 ? 11.0 : 7.0) : m.x < 3.0 ? (m.y < 1.0 ? 2.0 : m.y < 2.0 ? 14.0 : m.y < 3.0 ? 1.0 : 13.0) : (m.y < 1.0 ? 10.0 : m.y < 2.0 ? 6.0 : m.y < 3.0 ? 9.0 : 5.0);
-      c = floor(c * 18.0 + b / 16.0) / 18.0; c = mix(c, vec3(0.18, 0.12, 0.07), smoothstep(0.22, 0.42, e) * 0.55); gl_FragColor = vec4(c, 1.0); }` });
+      c = floor(c * 32.0 + b / 16.0) / 32.0; c = mix(c, vec3(0.18, 0.12, 0.07), smoothstep(0.22, 0.42, e) * 0.45); gl_FragColor = vec4(c, 1.0); }` });
 composer.addPass(pixel);
 // the sky: a dome from the horizon's haze up to deep blue, with the sun, and stars at night
 const skyU = { top: { value: new THREE.Color('#5aa0d8') }, hor: { value: new THREE.Color('#f2e8c8') }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color('#fff0c0') }, night: { value: 0 } };
@@ -69,7 +69,7 @@ sky.renderOrder = -1; scene.add(sky);
 function resize() {
   const pr = Math.min(devicePixelRatio || 1, isTouch ? 1.25 : 1.75);   // the pixel pass makes extra resolution invisible anyway
   renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight, false); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight);
-  pixel.uniforms.uRes.value.set(innerWidth * pr, innerHeight * pr); pixel.uniforms.uPix.value = Math.max(3, Math.round(3 * pr));
+  pixel.uniforms.uRes.value.set(innerWidth * pr, innerHeight * pr); pixel.uniforms.uPix.value = Math.max(2, Math.round(1.6 * pr));   // about 2 screen pixels per art pixel
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
@@ -79,20 +79,20 @@ const TCOL = { [TL.SEA]: '#3a86c0', [TL.SAND]: '#f0dca0', [TL.GRASS]: '#86c25a',
   [TL.CLIFF]: '#9a8268', [TL.DIRT]: '#c09868', [TL.BRIDGE]: '#b07a46', [TL.ARENA]: '#9a8a8a', [TL.LOT]: '#94cc66' };
 function buildIsland() {
   // the ground, painted pixel by pixel: soft noise on grass and sand, plank lines on bridges, foam along the shore
-  const g = new THREE.Group(), px = 2, N = S * px, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = new THREE.Group(), px = 4, N = S * px, cv = document.createElement('canvas'); cv.width = cv.height = N;
   const x = cv.getContext('2d'), img = x.createImageData(N, N), D = img.data;
   const rgb = {}; for (const [k, c] of Object.entries(TCOL)) { const v = new THREE.Color(c); rgb[k] = [v.r * 255, v.g * 255, v.b * 255]; }
   const wet = (t) => t === TL.SEA || t === TL.RIVER || t === TL.POND;
   const at = (a, b) => (a < 0 || b < 0 || a >= S || b >= S ? TL.SEA : W.tile[b * S + a]);
   for (let py = 0; py < N; py++) for (let pxx = 0; pxx < N; pxx++) {
-    const tx = pxx >> 1, tz = py >> 1, t = W.tile[tz * S + tx], c = rgb[t];
+    const tx = pxx >> 2, tz = py >> 2, t = W.tile[tz * S + tx], c = rgb[t];
     let h = ((pxx * 73856093) ^ (py * 19349663) ^ (tx * 83492791)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
-    let k = 1 + (((h & 255) / 255) - 0.5) * (t === TL.GRASS || t === TL.LOT ? 0.12 : t === TL.SAND || t === TL.DIRT ? 0.08 : 0.04);
+    let k = 1 + (((h & 255) / 255) - 0.5) * (t === TL.GRASS || t === TL.LOT ? 0.07 : t === TL.SAND || t === TL.DIRT ? 0.05 : 0.03);
     if (t === TL.PLAZA && ((tx + tz) & 1)) k *= 0.95;
-    if (t === TL.BRIDGE && (py & 1) === 0) k *= 0.8;
+    if (t === TL.BRIDGE && (py & 3) === 0) k *= 0.75;
     let r = c[0] * k, gg = c[1] * k, b = c[2] * k;
     if (wet(t)) {   // foam where water meets land
-      const fx = (pxx & 1) / 2 + 0.25, fz = (py & 1) / 2 + 0.25;
+      const fx = (pxx & 3) / 4 + 0.125, fz = (py & 3) / 4 + 0.125;
       const edge = (!wet(at(tx - 1, tz)) && fx < 0.3) || (!wet(at(tx + 1, tz)) && fx > 0.7) || (!wet(at(tx, tz - 1)) && fz < 0.3) || (!wet(at(tx, tz + 1)) && fz > 0.7);
       if (edge) { r = r * 0.4 + 153; gg = gg * 0.4 + 153; b = b * 0.4 + 153; }
       else if ((h & 1023) < 6) { r += 60; gg += 60; b += 50; }
