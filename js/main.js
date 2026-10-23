@@ -995,8 +995,12 @@ $('tNew').onclick = () => { save.room = save.lastCode = newCode(); persist(); re
 $('tJoin').onclick = () => { const c = cleanCode($('tCode').value); if (c.length !== 4) { $('tCode').classList.add('bad'); setTimeout(() => $('tCode').classList.remove('bad'), 600); return; } save.room = save.lastCode = c; persist(); $('tCode').value = ''; renderTitle(); };
 $('tCode').addEventListener('input', () => { const v = cleanCode($('tCode').value); if ($('tCode').value !== v) $('tCode').value = v; });
 $('tLang').onclick = () => { save.lang = save.lang === 'zh' ? 'en' : 'zh'; persist(); renderTitle(); };
-$('tPlay').onclick = () => {
+let joining = false;
+$('tPlay').onclick = async () => {
+  if (joining || started) return;
   sfx.unlock(); sfx.play('click');
+  // give the cloud save a moment, so this visit uses the account's id (the same on every device)
+  $('tPlay').disabled = true; await Promise.race([cloudReady, new Promise((r) => setTimeout(r, 3000))]); joining = true; $('tPlay').disabled = false;
   save.name = cleanName($('tName').value) || save.name || (save.lang === 'zh' ? '島民' : 'Islander') + Math.floor(10 + rnd() * 90); persist();
   $('title').hidden = true; $('hud').hidden = false; started = true;
   setId(save.id); setMe({ n: save.name, lv: save.lv });
@@ -1014,6 +1018,6 @@ setId(save.id);
 renderTitle(); requestAnimationFrame(spinPreview);
 camera.position.set(80, 40, 120); camera.lookAt(80, 0, 78); daylight();
 requestAnimationFrame(frame);
-startCloud().then((newer) => { if (!started) { setId(save.id); if (newer) renderTitle(); } });
+const cloudReady = startCloud(() => !started && !joining).then((newer) => { if (!started && !joining) { setId(save.id); if (newer) renderTitle(); } });
 if (params.has('play')) $('tPlay').onclick();
 window.BI = { W, me, save: () => save, net, get party() { return party; }, get bv() { return bv; }, get fight() { return fight; }, doAction, pickTool, startFight, invite, sendGift, peers, bugs, openWin, closeWin, attack };

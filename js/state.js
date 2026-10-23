@@ -20,13 +20,14 @@ function load() {
 }
 export function reloadSave() { save = load(); return save; }
 let cloud = null;
-export async function startCloud() {
+export async function startCloud(canSwitchId = () => true) {
   try {
     cloud = await import('/save.js');
     const newer = await cloud.pull(GAME, SAVE_KEY);
-    if (newer) reloadSave();
+    const playing = !canSwitchId();
+    if (newer && !playing) reloadSave();
     const u = await cloud.ensure();
-    if (u && u.id && save.id !== u.id) { save.id = u.id; persist(); }   // the same id on every device
+    if (u && u.id && save.id !== u.id && canSwitchId()) { save.id = u.id; persist(); }   // the same id on every device (only before you join the isle)
     return newer;
   } catch (e) { cloud = null; return false; }
 }
